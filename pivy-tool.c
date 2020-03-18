@@ -1919,14 +1919,14 @@ cmd_factory_reset(void)
 		return (err);
 	}
 
-	fprintf(stderr, "Resetting Yubikey %s (%s)\n",
+	fprintf(stderr, "Resetting YubiKey %s (%s)\n",
 	    piv_token_shortid(selk), piv_token_rdrname(selk));
 	if (ykpiv_token_has_serial(selk)) {
 		fprintf(stderr, "Serial #%u\n", ykpiv_token_serial(selk));
 	}
 
 	fprintf(stderr, "WARNING: this will completely reset the PIV applet "
-	    "on this Yubikey, erasing all keys and certificates!\n");
+	    "on this YubiKey, erasing all keys and certificates!\n");
 	do {
 		resp = getpass("Type 'YES' to continue: ");
 	} while (resp == NULL && errno == EINTR);
@@ -2037,7 +2037,7 @@ again9d:
 	printf("Admin 3DES key: %s\n", hex);
 	fprintf(stderr, "This key is only needed to generate new slot keys or "
 	    "change certificates in future. If you don't intend to do either "
-	    "you can simply forget about this key and the Yubikey will be "
+	    "you can simply forget about this key and the YubiKey will be "
 	    "sealed.\n");
 	if ((err = cmd_set_admin(admin_key)))
 		return (err);
@@ -2073,13 +2073,13 @@ usage(void)
 	    "  generate <slot>        Generate a new private key and a\n"
 	    "                         self-signed cert\n"
 	    "  import <slot>          Accept a SSH private key on stdin\n"
-	    "                         and import it to a Yubikey (generates\n"
+	    "                         and import it to a YubiKey (generates\n"
 	    "                         a self-signed cert to go with it)\n"
 	    "  change-pin             Changes the PIV PIN\n"
 	    "  change-puk             Changes the PIV PUK\n"
 	    "  reset-pin              Resets the PIN using the PUK\n"
 	    "  factory-reset          Factory reset the PIV applet on a\n"
-	    "                         Yubikey, once the PIN and PUK are both\n"
+	    "                         YubiKey, once the PIN and PUK are both\n"
 	    "                         locked (max retries used)\n"
 	    "  set-admin <hex|@file>  Sets the admin 3DES key\n"
 	    "\n"
@@ -2088,7 +2088,7 @@ usage(void)
 	    "  auth <slot>            Does a round-trip signature test to\n"
 	    "                         verify that the pubkey on stdin\n"
 	    "                         matches the one in the slot\n"
-	    "  attest <slot>          (Yubikey only) Output attestation cert\n"
+	    "  attest <slot>          (YubiKey only) Output attestation cert\n"
 	    "                         and chain for a given slot.\n"
 	    "\n"
 	    "  box [slot]             Encrypts stdin data with an ECDH box\n"

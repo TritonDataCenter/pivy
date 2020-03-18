@@ -716,7 +716,7 @@ pin_again:
 	if (errf_caused_by(err, "PermissionError") && pin_len != 0 &&
 	    piv_token_is_ykpiv(selk) && canskip) {
 		/*
-		 * On a Yubikey, slots other than 9C (SIGNATURE) can also be
+		 * On a YubiKey, slots other than 9C (SIGNATURE) can also be
 		 * set to "PIN Always" mode. We might have one, so try again
 		 * with forced PIN entry.
 		 */
@@ -867,7 +867,7 @@ pin_again:
 	err = piv_ecdh(selk, slot, partner, &secret, &seclen);
 	if (errf_caused_by(err, "PermissionError") && pin_len != 0 &&
 	    piv_token_is_ykpiv(selk) && canskip) {
-		/* Yubikey can have slots other than 9C as "PIN Always" */
+		/* YubiKey can have slots other than 9C as "PIN Always" */
 		canskip = B_FALSE;
 		goto pin_again;
 	} else if (errf_caused_by(err, "PermissionError")) {

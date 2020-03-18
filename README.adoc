@@ -17,8 +17,8 @@ operations using PIV cards, and the `pivy-agent`, which implements the SSH agent
 protocol as a drop-in replacement for the OpenSSH `ssh-agent` command (except
 that the keys it contains are always on a PIV card).
 
-"PIV cards" notably includes Yubico Yubikey devices such as the NEO and
-Yubikey4, which can store up to 24 keys by using the "retired key" slots (which
+"PIV cards" notably includes Yubico YubiKey devices such as the NEO and
+YubiKey 4, which can store up to 24 keys by using the "retired key" slots (which
 this agent supports).
 
 This project re-uses most of the agent and protocol parsing code from OpenSSH,
@@ -133,13 +133,13 @@ Available operations:
   generate <slot>        Generate a new private key and a
                          self-signed cert
   import <slot>          Accept a SSH private key on stdin
-                         and import it to a Yubikey (generates
+                         and import it to a YubiKey (generates
                          a self-signed cert to go with it)
   change-pin             Changes the PIV PIN
   change-puk             Changes the PIV PUK
   reset-pin              Resets the PIN using the PUK
   factory-reset          Factory reset the PIV applet on a
-                         Yubikey, once the PIN and PUK are both
+                         YubiKey, once the PIN and PUK are both
                          locked (max retries used)
   set-admin <hex|@file>  Sets the admin 3DES key
 
@@ -148,7 +148,7 @@ Available operations:
   auth <slot>            Does a round-trip signature test to
                          verify that the pubkey on stdin
                          matches the one in the slot
-  attest <slot>          (Yubikey only) Output attestation cert
+  attest <slot>          (YubiKey only) Output attestation cert
                          and chain for a given slot.
 
   box [slot]             Encrypts stdin data with an ECDH box
