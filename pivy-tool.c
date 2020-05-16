@@ -1681,9 +1681,165 @@ cmd_box(uint slotid)
 }
 
 static errf_t *
-cmd_unbox(void)
+assert_slot(struct piv_token *tk, uint slotid, struct piv_slot **slp)
 {
-	struct piv_token *tk;
+	struct piv_slot *sl;
+	errf_t *err;
+
+	VERIFY(piv_token_in_txn(tk));
+
+	sl = piv_get_slot(tk, slotid);
+	if (sl == NULL) {
+		err = piv_read_cert(tk, slotid);
+		if (err != ERRF_OK) {
+			return (err);
+		}
+		sl = piv_get_slot(tk, slotid);
+	}
+
+	*slp = sl;
+	return (ERRF_OK);
+}
+
+static boolean_t
+slot_matches(const struct piv_ecdh_box *box, struct piv_slot *sl)
+{
+	struct sshkey *box_key = piv_box_pubkey(box);
+	struct sshkey *slot_key = piv_slot_pubkey(sl);
+
+	return (sshkey_equal_public(box_key, slot_key) ? B_TRUE : B_FALSE);
+}
+
+static errf_t *
+find_box_token(const struct piv_ecdh_box *box, const uint8_t *guidp,
+    uint *slotidp, struct piv_token **tkp)
+{
+	struct piv_token *tks = NULL, *tk = NULL;
+	struct piv_slot *sl = NULL;
+	uint8_t local_guid[GUID_LEN] = { 0 };
+	uint local_slotid;
+	boolean_t has_guid = B_FALSE;
+	boolean_t has_slot = B_FALSE;
+	boolean_t match = B_FALSE;
+	errf_t *err;
+
+	if (guidp == NULL) {
+		if (piv_box_has_guidslot(box)) {
+			has_guid = B_TRUE;
+			guidp = piv_box_guid(box);
+			err = piv_find(ctx, guidp, GUID_LEN, &tks);
+			if (err != ERRF_OK) {
+				return (err);
+			}
+		} else {
+			err = piv_enumerate(ctx, &tks);
+			if (err != ERRF_OK) {
+				return (err);
+			}
+		}
+	} else {
+		has_guid = B_TRUE;
+		err = piv_find(ctx, guidp, GUID_LEN, &tks);
+		if (err != ERRF_OK) {
+			return (err);
+		}
+	}
+
+	if (tks == NULL) {
+		err = errf("NotFoundError", NULL,
+		    "no PIV tokens present on system that unlock box");
+		return (err);
+	}
+
+	if (*slotidp != 0 && *slotidp != 0xFF) {
+		local_slotid = *slotidp;
+		has_slot = B_TRUE;
+	} else if (box->pdb_slot != 0 && box->pdb_slot != 0xFF) {
+		local_slotid = box->pdb_slot;
+		has_slot = B_TRUE;
+	} else {
+		local_slotid = 0;
+	}
+
+	for (tk = tks; tk != NULL; tk = piv_token_next(tk)) {
+		err = piv_txn_begin(tk);
+		if (err != ERRF_OK) {
+			errf_free(err);
+			continue;
+		}
+		assert_select(tk);
+
+		if (has_slot) {
+			err = assert_slot(tk, local_slotid, &sl);
+			if (err != ERRF_OK) {
+				piv_txn_end(tk);
+				errf_free(err);
+				continue;
+			}
+
+			if (slot_matches(box, sl)) {
+				bcopy(piv_token_guid(tk), local_guid, GUID_LEN);
+				piv_txn_end(tk);
+				match = B_TRUE;
+				break;
+			}
+
+			piv_txn_end(tk);
+			continue;
+		}
+
+		err = piv_read_all_certs(tk);
+		if (err != ERRF_OK) {
+			warnfx(err, "failed to read all certs of PIV %s",
+			    piv_token_guid_hex(tk));
+			errf_free(err);
+			continue;
+		}
+
+		for (sl = piv_slot_next(tk, NULL); sl != NULL;
+		    sl = piv_slot_next(tk, sl)) {
+			err = assert_slot(tk, piv_slot_id(sl), &sl);
+			if (err != ERRF_OK) {
+				continue;
+			}
+
+			if (slot_matches(box, sl)) {
+				local_slotid = piv_slot_id(sl);
+				bcopy(piv_token_guid(tk), local_guid, GUID_LEN);
+				piv_txn_end(tk);
+				match = B_TRUE;
+				break;
+			}
+		}
+
+		if (match) {
+			break;
+		}
+
+		piv_txn_end(tk);
+	}
+
+	piv_release(tks);
+
+	if (!match) {
+		err = errf("NotFoundError", NULL,
+		    "no PIV token present that can unlock box");
+		return (err);
+	}
+
+	err = piv_find(ctx, local_guid, GUID_LEN, tkp);
+	if (err != ERRF_OK) {
+		return (err);
+	}
+
+	*slotidp = local_slotid;
+	return (ERRF_OK);
+}
+
+static errf_t *
+cmd_unbox(const uint8_t *guidp, uint slotid)
+{
+	struct piv_token *tk = NULL;
 	struct piv_slot *sl;
 	struct piv_ecdh_box *box;
 	errf_t *err;
@@ -1698,28 +1854,26 @@ cmd_unbox(void)
 		return (err);
 	free(buf);
 
-	if (!piv_box_has_guidslot(box)) {
-		err = funcerrf(NULL, "box has no hardware GUID + slot "
-		    "information; can't be opened by pivy-tool");
-		return (err);
+	err = find_box_token(box, guidp, &slotid, &tk);
+	if (err != ERRF_OK) {
+	    piv_box_free(box);
+	    return (err);
 	}
 
-	err = piv_find(ctx, piv_box_guid(box), GUID_LEN, &tk);
-	if (err)
-		return (err);
 	ks = (selk = tk);
-	err = piv_box_find_token(ks, box, &tk, &sl);
-	if (errf_caused_by(err, "NotFoundError")) {
-		err = funcerrf(err, "no token found on system that can "
-		    "unlock this box");
-		return (err);
-	} else if (err) {
-		return (err);
-	}
 
 	if ((err = piv_txn_begin(tk)))
 		return (err);
 	assert_select(tk);
+
+	err = assert_slot(tk, slotid, &sl);
+	if (err != ERRF_OK) {
+	    piv_txn_end(tk);
+	    piv_box_free(box);
+	    piv_release(tk);
+	    return (err);
+	}
+
 	assert_pin(tk, B_FALSE);
 again:
 	err = piv_box_open(tk, sl, box);
@@ -2242,8 +2396,9 @@ usage(void)
 	    "                         and chain for a given slot.\n"
 	    "\n"
 	    "  box [slot]             Encrypts stdin data with an ECDH box\n"
-	    "  unbox                  Decrypts stdin data with an ECDH box\n"
-	    "                         Chooses token and slot automatically\n"
+	    "  unbox [slot]           Decrypts stdin data with an ECDH box\n"
+	    "                         Chooses token and slot automatically if\n"
+	    "                         not specified\n"
 	    "  box-info               Prints metadata about a box from stdin\n"
 	    "\n"
 	    "General options:\n"
@@ -2675,11 +2830,18 @@ main(int argc, char *argv[])
 		err = cmd_box(slotid);
 
 	} else if (strcmp(op, "unbox") == 0) {
+		uint slotid = 0;
+
 		if (optind < argc) {
+			slotid = strtol(argv[optind++], NULL, 16);
+		}
+
+		if (optind > argc) {
 			warnx("too many arguments for %s", op);
 			usage();
 		}
-		err = cmd_unbox();
+
+		err = cmd_unbox(guid, slotid);
 
 	} else if (strcmp(op, "box-info") == 0) {
 		if (optind < argc) {
